@@ -110,7 +110,7 @@ export default function MyPage() {
                 <button
                   onClick={() => {
                     if (!addr.name || !addr.phone || !addr.address) return alert("배송 정보를 모두 입력해 주세요.");
-                    store.pay(unpaid.map((o) => o.id), addr, save, fee);
+                    store.pay(unpaid.map((o) => o.id), addr, save);
                     setPaying(false);
                   }}
                   className="tabular w-full rounded-xl bg-accent py-3 font-semibold text-white"

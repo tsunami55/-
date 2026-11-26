@@ -23,7 +23,9 @@ export interface Product {
   defectNote?: string; // B급일 때 하자 설명 (필수)
   color: string; // 임시 이미지 배경색
   startPrice: number;
-  reservePrice?: number; // 최저낙찰가 (판매자/관리자만 알 수 있음)
+  reservePrice?: number; // 최저낙찰가 (등록할 때만 사용, 서버에 비공개 저장)
+  hasReserve?: boolean;
+  reserveMet?: boolean;
   buyNowPrice?: number; // 즉시구매가
   currentPrice: number;
   leaderId?: string;
@@ -48,7 +50,7 @@ export interface Address {
 export interface User {
   id: string;
   name: string;
-  provider: "kakao" | "phone";
+  provider?: "kakao" | "phone" | "guest" | "email";
   phone?: string;
   isAdmin?: boolean;
   strikes: number; // 미결제 횟수

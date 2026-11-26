@@ -38,6 +38,7 @@ export function buyNowAvailable(p: Product) {
 }
 
 export function reserveMet(p: Product) {
+  if (p.reserveMet !== undefined) return p.reserveMet;
   return !p.reservePrice || p.currentPrice >= p.reservePrice;
 }
 

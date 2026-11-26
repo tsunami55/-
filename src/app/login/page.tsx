@@ -3,19 +3,20 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useStore } from "@/lib/store";
 
-// 프로토타입: 실제 서비스에서는 Supabase Auth의 카카오 OAuth / 휴대폰 OTP로 교체.
+// 지금은 '이름만 입력하고 시작'(게스트 계정). 카카오 로그인은 카카오 디벨로퍼스 앱 등록 후 연결 예정.
 export default function LoginPage() {
   const store = useStore();
   const router = useRouter();
   const [name, setName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [sent, setSent] = useState(false);
-  const [code, setCode] = useState("");
+  const [email, setEmail] = useState("");
+  const [pw, setPw] = useState("");
+  const [showAdmin, setShowAdmin] = useState(false);
   const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
 
-  const go = () => {
+  const go = (fallback = "/") => {
     const next = new URLSearchParams(window.location.search).get("next");
-    router.push(next && next.startsWith("/") ? next : "/");
+    router.push(next && next.startsWith("/") ? next : fallback);
   };
 
   return (
@@ -26,56 +27,46 @@ export default function LoginPage() {
       </div>
 
       <div className="space-y-2">
-        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="이름 (테스트용: 카카오에서 받아올 정보)" className="w-full rounded-xl border border-line px-4 py-3 text-sm" />
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="이름 또는 닉네임" className="w-full rounded-xl border border-line px-4 py-3 text-sm" />
         <button
-          onClick={() => {
-            if (!name.trim()) return setErr("테스트용 이름을 입력해 주세요.");
-            store.login("kakao", name.trim());
+          disabled={busy}
+          onClick={async () => {
+            if (!name.trim()) return setErr("이름을 입력해 주세요.");
+            setBusy(true);
+            const r = await store.login(name.trim());
+            setBusy(false);
+            if (!r.ok) return setErr(r.message);
             go();
           }}
-          className="w-full rounded-xl bg-[#FEE500] py-3 font-semibold text-[#191919]"
+          className="w-full rounded-xl bg-ink py-3 font-semibold text-white disabled:opacity-50"
         >
-          카카오로 3초 만에 시작하기
+          바로 시작하기
         </button>
-      </div>
-
-      <div className="flex items-center gap-3 text-xs text-muted">
-        <span className="h-px flex-1 bg-line" />또는 휴대폰 번호로<span className="h-px flex-1 bg-line" />
-      </div>
-
-      <div className="space-y-2">
-        <div className="flex gap-2">
-          <input value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="tel" placeholder="010-0000-0000" className="tabular min-w-0 flex-1 rounded-xl border border-line px-4 py-3 text-sm" />
-          <button
-            onClick={() => (phone.replace(/\D/g, "").length >= 10 ? (setSent(true), setErr("")) : setErr("휴대폰 번호를 확인해 주세요."))}
-            className="rounded-xl border border-ink px-4 text-sm font-semibold"
-          >
-            인증번호
-          </button>
-        </div>
-        {sent && (
-          <>
-            <input value={code} onChange={(e) => setCode(e.target.value)} inputMode="numeric" placeholder="인증번호 6자리 (테스트: 123456)" className="tabular w-full rounded-xl border border-line px-4 py-3 text-sm" />
-            <button
-              onClick={() => {
-                if (code !== "123456") return setErr("인증번호가 맞지 않아요.");
-                const digits = phone.replace(/\D/g, "");
-                store.login("phone", name.trim() || `고객${digits.slice(-4)}`, digits);
-                go();
-              }}
-              className="w-full rounded-xl bg-ink py-3 font-semibold text-white"
-            >
-              확인
-            </button>
-          </>
-        )}
+        <button disabled className="w-full rounded-xl bg-[#FEE500]/50 py-3 font-semibold text-[#191919]/50">
+          카카오로 시작하기 (준비 중)
+        </button>
       </div>
 
       {err && <p className="text-center text-sm text-accent">{err}</p>}
 
-      <button onClick={() => { store.loginAdmin(); router.push("/admin"); }} className="w-full text-center text-xs text-muted underline">
-        관리자로 로그인 (테스트)
-      </button>
+      {!showAdmin ? (
+        <button onClick={() => setShowAdmin(true)} className="w-full text-center text-xs text-muted underline">관리자 로그인</button>
+      ) : (
+        <div className="space-y-2 border-t border-line pt-4">
+          <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="관리자 이메일" className="w-full rounded-xl border border-line px-4 py-2.5 text-sm" />
+          <input value={pw} onChange={(e) => setPw(e.target.value)} type="password" placeholder="비밀번호" className="w-full rounded-xl border border-line px-4 py-2.5 text-sm" />
+          <button
+            onClick={async () => {
+              const r = await store.loginEmail(email, pw);
+              if (!r.ok) return setErr(r.message);
+              go("/admin");
+            }}
+            className="w-full rounded-xl border border-ink py-2.5 text-sm font-semibold"
+          >
+            관리자 로그인
+          </button>
+        </div>
+      )}
     </div>
   );
 }

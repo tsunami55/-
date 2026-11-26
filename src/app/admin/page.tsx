@@ -119,7 +119,6 @@ export default function AdminPage() {
 
       <div className="flex gap-3 border-t border-line pt-4 text-xs text-muted">
         <button onClick={() => store.closeNow()} className="underline">테스트: 진행 중 경매 전부 지금 마감</button>
-        <button onClick={() => confirm("모든 테스트 데이터를 초기화할까요?") && store.resetAll()} className="underline">테스트 데이터 초기화</button>
       </div>
     </div>
   );
@@ -152,7 +151,7 @@ function ProductForm({ onDone }: { onDone: () => void }) {
         if (!f.title || !n(f.startPrice)) return alert("상품명과 시작가는 필수예요.");
         if (f.grade !== "NEW" && !f.defectNote) return alert("B급 상품은 하자 설명이 필수예요.");
         store.submitProduct({
-          title: f.title, brand: "키즈옥션 셀렉", category: f.category, size: f.size, grade: f.grade,
+          title: f.title, category: f.category, size: f.size, grade: f.grade,
           defectNote: f.grade === "NEW" ? undefined : f.defectNote,
           color: COLORS[Math.floor(Math.random() * COLORS.length)],
           startPrice: n(f.startPrice)!, reservePrice: n(f.reservePrice), buyNowPrice: n(f.buyNowPrice),

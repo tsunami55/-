@@ -3,9 +3,11 @@ import Link from "next/link";
 import { useStore } from "@/lib/store";
 
 export default function Header() {
-  const { me, state, logout } = useStore();
+  const { me, state, logout, configured } = useStore();
   const unread = me ? state.notices.filter((n) => n.userId === me.id && !n.read).length : 0;
   return (
+    <>
+    {!configured && <div className="bg-accent py-1.5 text-center text-xs text-white">서버 연결 키가 아직 설정되지 않았어요</div>}
     <header className="sticky top-0 z-20 border-b border-line bg-white/90 backdrop-blur">
       <div className="mx-auto flex h-14 max-w-5xl items-center gap-4 px-4">
         <Link href="/" className="text-lg font-extrabold tracking-tight">
@@ -31,5 +33,6 @@ export default function Header() {
         )}
       </div>
     </header>
+    </>
   );
 }

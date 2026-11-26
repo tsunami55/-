@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { use, useEffect, useRef, useState } from "react";
 import { buyNowAvailable, formatRemain, increment, minNextBid, reserveMet, RULES, uniqueBidders, won } from "@/lib/auction";
-import { useStore } from "@/lib/store";
+import { fetchMyLeaderMax, useStore } from "@/lib/store";
 import { CATEGORY_LABEL, GRADE_LABEL } from "@/lib/types";
 import ProductArt from "@/components/ProductArt";
 
@@ -15,6 +15,13 @@ export default function AuctionPage({ params }: { params: Promise<{ id: string }
   const [amount, setAmount] = useState("");
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const viewed = useRef(false);
+  const leading = !!me && !!p && p.leaderId === me.id;
+  const [myMax, setMyMax] = useState<number | null>(null);
+  const price = p?.currentPrice;
+
+  useEffect(() => {
+    if (leading) fetchMyLeaderMax(id).then(setMyMax);
+  }, [leading, price, id]);
 
   useEffect(() => {
     if (ready && p && !viewed.current) {
@@ -28,13 +35,12 @@ export default function AuctionPage({ params }: { params: Promise<{ id: string }
 
   const min = minNextBid(p);
   const active = p.status === "ACTIVE";
-  const iAmLeader = me && p.leaderId === me.id;
-  const myMax = iAmLeader ? p.leaderMax : undefined;
+  const iAmLeader = leading;
 
-  const submit = () => {
+  const submit = async () => {
     const v = Number(amount.replace(/[^0-9]/g, ""));
     if (!v) return setMsg({ ok: false, text: "금액을 입력해 주세요." });
-    const r = store.bid(p.id, v);
+    const r = await store.bid(p.id, v);
     setMsg({ ok: r.ok && r.leading !== false, text: r.message });
     if (r.ok) setAmount("");
   };
@@ -76,11 +82,11 @@ export default function AuctionPage({ params }: { params: Promise<{ id: string }
               <span>시작가 {won(p.startPrice)}</span>
               <span>입찰 {p.bids.length}회 · {uniqueBidders(p)}명</span>
               <span>입찰 단위 {won(increment(p.currentPrice))}</span>
-              {p.reservePrice && <span className={reserveMet(p) ? "text-emerald-600" : ""}>{reserveMet(p) ? "최저낙찰가 도달" : "최저낙찰가 미달"}</span>}
+              {p.hasReserve && <span className={reserveMet(p) ? "text-emerald-600" : ""}>{reserveMet(p) ? "최저낙찰가 도달" : "최저낙찰가 미달"}</span>}
             </div>
             {iAmLeader && (
               <p className="mt-3 rounded-xl bg-white px-3 py-2 text-sm font-semibold text-accent">
-                현재 1등이에요 · 내 최대 입찰가 {won(myMax!)}
+                현재 1등이에요{myMax ? ` · 내 최대 입찰가 ${won(myMax)}` : ""}
               </p>
             )}
           </div>
@@ -141,9 +147,9 @@ export default function AuctionPage({ params }: { params: Promise<{ id: string }
                 )}
                 {buyNowAvailable(p) && (
                   <button
-                    onClick={() => {
+                    onClick={async () => {
                       if (!confirm(`${won(p.buyNowPrice!)}에 바로 구매할까요?`)) return;
-                      const r = store.buyNow(p.id);
+                      const r = await store.buyNow(p.id);
                       setMsg({ ok: r.ok, text: r.message });
                     }}
                     className="tabular w-full rounded-xl border border-ink py-3 font-semibold"

@@ -1,10 +1,8 @@
 "use client";
-// 프로토타입용 상태 저장소 (브라우저 localStorage).
-// 실제 서비스에서는 이 파일의 함수들을 Supabase 호출로 바꾸면 된다. 화면 코드는 그대로 유지.
+// Supabase 연동 저장소. 쓰기는 모두 DB 함수(RPC)로 처리하고, 변경은 실시간 구독으로 다시 불러온다.
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
-import { placeBid as rulePlaceBid, RULES, settle, nextCloseTime } from "./auction";
-import { ADMIN, seedProducts } from "./seed";
-import type { Address, Notice, Order, Product, User } from "./types";
+import { supabase } from "./supabase";
+import type { Address, Bid, Notice, Order, Product, User } from "./types";
 
 interface State {
   users: User[];
@@ -14,12 +12,78 @@ interface State {
   notices: Notice[];
 }
 
-const KEY = "kidsauction-v1";
-const uid = () => Math.random().toString(36).slice(2, 10);
+type Row = Record<string, unknown>;
+const t = (v: unknown) => (v ? new Date(v as string).getTime() : undefined);
 
-function initial(): State {
-  return { users: [ADMIN], products: seedProducts(), orders: [], notices: [] };
-}
+const toUser = (r: Row): User => ({
+  id: r.id as string,
+  name: r.name as string,
+  phone: (r.phone as string) ?? undefined,
+  isAdmin: r.is_admin as boolean,
+  strikes: r.strikes as number,
+  bannedUntil: t(r.banned_until),
+  sizeAlerts: (r.size_alerts as number[]) ?? [],
+  address: (r.address as Address) ?? undefined,
+});
+
+const toBid = (r: Row): Bid => ({
+  id: r.id as string,
+  userId: r.user_id as string,
+  userLabel: r.user_label as string,
+  amount: r.amount as number,
+  at: t(r.created_at)!,
+  auto: r.auto as boolean,
+});
+
+const toProduct = (r: Row, bids: Bid[]): Product => ({
+  id: r.id as string,
+  title: r.title as string,
+  brand: r.brand as string,
+  category: r.category as Product["category"],
+  size: r.size as number,
+  grade: r.grade as Product["grade"],
+  defectNote: (r.defect_note as string) ?? undefined,
+  color: r.color as string,
+  startPrice: r.start_price as number,
+  buyNowPrice: (r.buy_now_price as number) ?? undefined,
+  currentPrice: r.current_price as number,
+  hasReserve: r.has_reserve as boolean,
+  reserveMet: r.reserve_met as boolean,
+  leaderId: (r.leader_id as string) ?? undefined,
+  bids,
+  views: r.views as number,
+  endsAt: t(r.ends_at)!,
+  status: r.status as Product["status"],
+  sellerId: (r.seller_id as string) ?? "",
+  createdAt: t(r.created_at)!,
+  winnerId: (r.winner_id as string) ?? undefined,
+  finalPrice: (r.final_price as number) ?? undefined,
+  closedAt: t(r.closed_at),
+});
+
+const toOrder = (r: Row): Order => ({
+  id: r.id as string,
+  productId: r.product_id as string,
+  userId: r.user_id as string,
+  amount: r.amount as number,
+  createdAt: t(r.created_at)!,
+  dueAt: t(r.due_at)!,
+  status: r.status as Order["status"],
+  paidAt: t(r.paid_at),
+  shippingFee: (r.shipping_fee as number) ?? undefined,
+});
+
+const toNotice = (r: Row): Notice => ({
+  id: r.id as string,
+  userId: r.user_id as string,
+  text: r.text as string,
+  href: (r.href as string) ?? undefined,
+  at: t(r.created_at)!,
+  read: r.read as boolean,
+});
+
+type Result = { ok: boolean; message: string; leading?: boolean };
+const EMPTY: State = { users: [], products: [], orders: [], notices: [] };
 
 type Api = ReturnType<typeof useStoreApi>;
 const Ctx = createContext<Api | null>(null);
@@ -27,242 +91,139 @@ const Ctx = createContext<Api | null>(null);
 function useStoreApi() {
   const [s, setS] = useState<State | null>(null);
   const [now, setNow] = useState(() => Date.now());
-  const ref = useRef<State | null>(null);
-  useEffect(() => {
-    ref.current = s;
-  }, [s]);
+  const settling = useRef(0);
 
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(KEY);
-      // 브라우저 저장소는 화면이 뜬 뒤에만 읽을 수 있어서 effect에서 불러온다
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setS(raw ? JSON.parse(raw) : initial());
-    } catch {
-      setS(initial());
-    }
+  const load = useCallback(async () => {
+    if (!supabase) return setS(EMPTY);
+    const { data: auth } = await supabase.auth.getSession();
+    const uid = auth.session?.user.id;
+    const { data: prows } = await supabase.from("products").select("*").order("ends_at").limit(300);
+    const ids = (prows ?? []).map((p) => p.id);
+    const { data: brows } = ids.length
+      ? await supabase.from("bids").select("*").in("product_id", ids).order("created_at")
+      : { data: [] };
+    const byProduct = new Map<string, Bid[]>();
+    for (const b of brows ?? []) byProduct.set(b.product_id, [...(byProduct.get(b.product_id) ?? []), toBid(b)]);
+    const [users, orders, notices] = uid
+      ? await Promise.all([
+          supabase.from("profiles").select("*"),
+          supabase.from("orders").select("*").order("created_at", { ascending: false }),
+          supabase.from("notices").select("*").eq("user_id", uid).order("created_at", { ascending: false }).limit(50),
+        ])
+      : [{ data: [] }, { data: [] }, { data: [] }];
+    setS({
+      currentUserId: uid,
+      users: (users.data ?? []).map(toUser),
+      products: (prows ?? []).map((p) => toProduct(p, byProduct.get(p.id) ?? [])),
+      orders: (orders.data ?? []).map(toOrder),
+      notices: (notices.data ?? []).map(toNotice),
+    });
   }, []);
 
+  // 처음 불러오기 + 로그인 변화 + 실시간 변경 구독
   useEffect(() => {
-    if (!s) return;
-    try {
-      localStorage.setItem(KEY, JSON.stringify(s));
-    } catch {}
-  }, [s]);
+    const sb = supabase;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 외부(DB) 데이터 동기화
+    load();
+    if (!sb) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const reload = () => {
+      clearTimeout(timer);
+      timer = setTimeout(load, 300);
+    };
+    const { data: sub } = sb.auth.onAuthStateChange(() => reload());
+    const ch = sb
+      .channel("kidsauction")
+      .on("postgres_changes", { event: "*", schema: "public", table: "products" }, reload)
+      .on("postgres_changes", { event: "*", schema: "public", table: "bids" }, reload)
+      .on("postgres_changes", { event: "*", schema: "public", table: "orders" }, reload)
+      .on("postgres_changes", { event: "*", schema: "public", table: "notices" }, reload)
+      .subscribe();
+    return () => {
+      clearTimeout(timer);
+      sub.subscription.unsubscribe();
+      sb.removeChannel(ch);
+    };
+  }, [load]);
 
-  const notify = (st: State, userId: string, text: string, href?: string): State => ({
-    ...st,
-    notices: [{ id: uid(), userId, text, href, at: Date.now(), read: false }, ...st.notices],
-  });
-
-  // 1초마다 마감 시간이 지난 경매를 정산
+  // 1초마다 시계 갱신, 마감 시간이 지난 경매가 보이면 정산 요청 (서버에서도 1분마다 자동 정산)
   useEffect(() => {
-    const t = setInterval(() => {
+    const timer = setInterval(() => {
       const n = Date.now();
       setNow(n);
       setS((st) => {
-        if (!st || !st.products.some((p) => p.status === "ACTIVE" && p.endsAt <= n)) return st;
-        let next = { ...st };
-        next.products = st.products.map((p) => {
-          if (p.status !== "ACTIVE" || p.endsAt > n) return p;
-          const done = settle(p, n);
-          if (done.status === "SOLD" && done.winnerId) {
-            next.orders = [
-              { id: uid(), productId: p.id, userId: done.winnerId, amount: done.finalPrice!, createdAt: n, dueAt: n + RULES.paymentWindowMs, status: "UNPAID" },
-              ...next.orders,
-            ];
-            next = notify(next, done.winnerId, `[알림톡] '${p.title}' 낙찰되었어요! 24시간 안에 결제해 주세요.`, "/my");
-          }
-          return done;
-        });
-        return next;
+        if (supabase && st?.products.some((p) => p.status === "ACTIVE" && p.endsAt <= n) && n - settling.current > 5000) {
+          settling.current = n;
+          supabase.rpc("settle_due_auctions").then(() => load());
+        }
+        return st;
       });
     }, 1000);
-    return () => clearInterval(t);
-  }, []);
+    return () => clearInterval(timer);
+  }, [load]);
 
-  const update = useCallback((fn: (st: State) => State) => setS((st) => (st ? fn(st) : st)), []);
+  const rpc = async (fn: string, args?: Record<string, unknown>): Promise<Result> => {
+    if (!supabase) return { ok: false, message: "서버 연결 설정이 필요해요." };
+    const { data, error } = await supabase.rpc(fn, args);
+    if (error) return { ok: false, message: error.message };
+    load();
+    return (data as Result) ?? { ok: true, message: "" };
+  };
 
-  const me = s?.users.find((u) => u.id === s.currentUserId);
+  const state = s ?? EMPTY;
+  const me = state.users.find((u) => u.id === state.currentUserId);
 
   return {
     ready: !!s,
+    configured: !!supabase,
     now,
-    state: s ?? initial(),
+    state,
     me,
 
-    // ── 로그인 (Supabase Auth: 카카오 OAuth / 휴대폰 OTP로 교체 예정)
-    login(provider: "kakao" | "phone", name: string, phone?: string) {
-      update((st) => {
-        const existing = st.users.find((u) => (phone ? u.phone === phone : u.provider === provider && u.name === name));
-        if (existing) return { ...st, currentUserId: existing.id };
-        const user: User = { id: uid(), name, provider, phone, strikes: 0, sizeAlerts: [] };
-        return { ...st, users: [...st.users, user], currentUserId: user.id };
-      });
+    /** 간편 시작 (카카오 로그인 연동 전 임시: 이름만으로 게스트 계정 생성) */
+    async login(name: string): Promise<Result> {
+      if (!supabase) return { ok: false, message: "서버 연결 설정이 필요해요." };
+      const { error } = await supabase.auth.signInAnonymously({ options: { data: { name } } });
+      if (error) return { ok: false, message: error.message };
+      await load();
+      return { ok: true, message: "" };
     },
-    loginAdmin() {
-      update((st) => ({ ...st, currentUserId: "admin" }));
+    async loginEmail(email: string, password: string): Promise<Result> {
+      if (!supabase) return { ok: false, message: "서버 연결 설정이 필요해요." };
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) return { ok: false, message: "이메일 또는 비밀번호가 맞지 않아요." };
+      await load();
+      return { ok: true, message: "" };
     },
-    logout() {
-      update((st) => ({ ...st, currentUserId: undefined }));
-    },
-
-    view(productId: string) {
-      update((st) => ({ ...st, products: st.products.map((p) => (p.id === productId ? { ...p, views: p.views + 1 } : p)) }));
-    },
-
-    // ── 입찰
-    bid(productId: string, maxAmount: number): { ok: boolean; message: string; leading?: boolean } {
-      const st = ref.current;
-      if (!st || !me) return { ok: false, message: "로그인 후 입찰할 수 있어요." };
-      if (me.bannedUntil && me.bannedUntil > Date.now())
-        return { ok: false, message: `미결제 누적으로 ${new Date(me.bannedUntil).toLocaleDateString()}까지 입찰이 제한되어 있어요.` };
-      const p = st.products.find((x) => x.id === productId);
-      if (!p) return { ok: false, message: "상품을 찾을 수 없어요." };
-      const prevLeader = p.leaderId;
-      const r = rulePlaceBid(p, me, maxAmount);
-      if (!r.ok) return { ok: false, message: r.error };
-      update((cur) => {
-        let next = { ...cur, products: cur.products.map((x) => (x.id === productId ? r.product : x)) };
-        if (prevLeader && prevLeader !== me.id && r.product.leaderId !== prevLeader)
-          next = notify(next, prevLeader, `[알림톡] '${p.title}' 더 높은 입찰이 들어왔어요.`, `/auction/${p.id}`);
-        return next;
-      });
-      return { ok: true, message: r.message, leading: r.product.leaderId === me.id };
+    async logout() {
+      await supabase?.auth.signOut();
+      await load();
     },
 
-    buyNow(productId: string): { ok: boolean; message: string } {
-      const st = ref.current;
-      if (!st || !me) return { ok: false, message: "로그인 후 구매할 수 있어요." };
-      const p = st.products.find((x) => x.id === productId);
-      if (!p?.buyNowPrice) return { ok: false, message: "즉시구매가 없는 상품이에요." };
-      const n = Date.now();
-      update((cur) => ({
-        ...cur,
-        products: cur.products.map((x) =>
-          x.id === productId ? { ...x, status: "SOLD", winnerId: me.id, finalPrice: p.buyNowPrice, closedAt: n } : x,
-        ),
-        orders: [{ id: uid(), productId, userId: me.id, amount: p.buyNowPrice!, createdAt: n, dueAt: n + RULES.paymentWindowMs, status: "UNPAID" }, ...cur.orders],
-      }));
-      return { ok: true, message: "즉시구매 완료! 마이페이지에서 결제해 주세요." };
-    },
+    view: (productId: string) => void supabase?.rpc("increment_view", { p_product: productId }),
 
-    // ── 결제 (토스페이먼츠 연동 예정): 묶음 결제
-    pay(orderIds: string[], address: Address, saveAddress: boolean, shippingFee: number) {
-      update((st) => ({
-        ...st,
-        users: saveAddress && me ? st.users.map((u) => (u.id === me.id ? { ...u, address } : u)) : st.users,
-        orders: st.orders.map((o) =>
-          orderIds.includes(o.id)
-            ? { ...o, status: "PAID", paidAt: Date.now(), shippingFee: o.id === orderIds[0] ? shippingFee : 0 }
-            : o,
-        ),
-      }));
-    },
+    bid: (productId: string, maxAmount: number) => rpc("place_bid", { p_product: productId, p_max: maxAmount }),
+    buyNow: (productId: string) => rpc("buy_now", { p_product: productId }),
+    pay: (orderIds: string[], address: Address, saveAddress: boolean) =>
+      rpc("pay_orders", { p_orders: orderIds, p_address: address, p_save: saveAddress }),
+    respondOffer: (orderId: string, accept: boolean) => rpc("respond_offer", { p_order: orderId, p_accept: accept }),
+    setSizeAlerts: (sizes: number[]) => rpc("update_my_profile", { p_size_alerts: sizes }),
+    readNotices: () => rpc("mark_notices_read"),
 
-    respondOffer(orderId: string, accept: boolean) {
-      update((st) => ({
-        ...st,
-        orders: st.orders.map((o) =>
-          o.id === orderId ? { ...o, status: accept ? "UNPAID" : "DECLINED", dueAt: Date.now() + RULES.paymentWindowMs } : o,
-        ),
-      }));
-    },
-
-    setSizeAlerts(sizes: number[]) {
-      if (!me) return;
-      update((st) => ({ ...st, users: st.users.map((u) => (u.id === me.id ? { ...u, sizeAlerts: sizes } : u)) }));
-    },
-
-    readNotices() {
-      if (!me) return;
-      update((st) => ({ ...st, notices: st.notices.map((n) => (n.userId === me.id ? { ...n, read: true } : n)) }));
-    },
-
-    // ── 판매자 / 관리자
-    submitProduct(p: Omit<Product, "id" | "currentPrice" | "bids" | "views" | "endsAt" | "status" | "sellerId" | "createdAt">) {
-      if (!me) return;
-      update((st) => ({
-        ...st,
-        products: [
-          { ...p, id: uid(), currentPrice: p.startPrice, bids: [], views: 0, endsAt: nextCloseTime(), status: me.isAdmin ? "ACTIVE" : "PENDING", sellerId: me.id, createdAt: Date.now() },
-          ...st.products,
-        ],
-      }));
-    },
-
-    review(productId: string, approve: boolean) {
-      update((st) => {
-        const p = st.products.find((x) => x.id === productId);
-        if (!p) return st;
-        let next: State = {
-          ...st,
-          products: st.products.map((x) =>
-            x.id === productId ? { ...x, status: approve ? "ACTIVE" : "REJECTED", endsAt: nextCloseTime() } : x,
-          ),
-        };
-        // 승인되면 '내 사이즈 알림' 등록 고객에게 알림톡
-        if (approve)
-          for (const u of st.users.filter((u) => u.sizeAlerts.includes(p.size)))
-            next = notify(next, u.id, `[알림톡] 찜한 사이즈 ${p.size} 경매가 열렸어요: ${p.title}`, `/auction/${p.id}`);
-        return next;
-      });
-    },
-
-    /** 결제 기한 만료 처리: 1회 경고, 2회째 30일 입찰 제한, 차순위 입찰자에게 낙찰 제안 */
-    expireOrder(orderId: string) {
-      update((st) => {
-        const o = st.orders.find((x) => x.id === orderId);
-        const p = o && st.products.find((x) => x.id === o.productId);
-        if (!o || !p) return st;
-        const u = st.users.find((x) => x.id === o.userId)!;
-        const strikes = u.strikes + 1;
-        let next: State = {
-          ...st,
-          orders: st.orders.map((x) => (x.id === orderId ? { ...x, status: "EXPIRED" } : x)),
-          users: st.users.map((x) =>
-            x.id === u.id ? { ...x, strikes, bannedUntil: strikes >= 2 ? Date.now() + RULES.banMs : x.bannedUntil } : x,
-          ),
-        };
-        next = notify(
-          next,
-          u.id,
-          strikes >= 2
-            ? "[알림톡] 미결제가 2회 누적되어 30일간 입찰이 제한돼요."
-            : "[알림톡] 결제 기한이 지나 낙찰이 취소되었어요. 한 번 더 미결제 시 입찰이 제한돼요.",
-        );
-        // 차순위: 낙찰자를 제외한 입찰자 중 최고 입찰가
-        const second = p.bids
-          .filter((b) => b.userId !== o.userId)
-          .reduce<{ userId: string; amount: number } | null>((a, b) => (!a || b.amount > a.amount ? b : a), null);
-        const already = st.orders.some((x) => x.productId === p.id && x.userId === second?.userId);
-        if (second && !already) {
-          next.orders = [
-            { id: uid(), productId: p.id, userId: second.userId, amount: second.amount, createdAt: Date.now(), dueAt: Date.now() + RULES.paymentWindowMs, status: "OFFERED" },
-            ...next.orders,
-          ];
-          next = notify(next, second.userId, `[알림톡] '${p.title}' 차순위 낙찰 기회! ${second.amount.toLocaleString()}원에 구매하시겠어요?`, "/my");
-        }
-        return next;
-      });
-    },
-
-    /** 테스트용: 진행 중인 경매를 지금 마감 */
-    closeNow(productId?: string) {
-      const n = Date.now() - 1;
-      update((st) => ({
-        ...st,
-        products: st.products.map((p) => (p.status === "ACTIVE" && (!productId || p.id === productId) ? { ...p, endsAt: n } : p)),
-      }));
-    },
-
-    resetAll() {
-      try {
-        localStorage.removeItem(KEY);
-      } catch {}
-      setS(initial());
-    },
+    submitProduct: (p: Pick<Product, "title" | "category" | "size" | "grade" | "defectNote" | "color" | "startPrice" | "reservePrice" | "buyNowPrice">) =>
+      rpc("submit_product", {
+        p_title: p.title, p_category: p.category, p_size: p.size, p_grade: p.grade, p_defect_note: p.defectNote ?? null,
+        p_color: p.color, p_start_price: p.startPrice, p_reserve_price: p.reservePrice ?? null, p_buy_now_price: p.buyNowPrice ?? null,
+      }),
+    review: (productId: string, approve: boolean) => rpc("review_product", { p_product: productId, p_approve: approve }),
+    expireOrder: (orderId: string) => rpc("expire_order", { p_order: orderId }),
+    closeNow: (productId?: string) => rpc("admin_close_now", { p_product: productId ?? null }),
   };
+}
+
+/** 내가 1등일 때 내 최대 입찰가 (다른 사람에게는 비공개) */
+export async function fetchMyLeaderMax(productId: string) {
+  return ((await supabase?.rpc("my_leader_max", { p_product: productId }))?.data as number | null) ?? null;
 }
 
 export function StoreProvider({ children }: { children: React.ReactNode }) {
