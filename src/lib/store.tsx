@@ -28,11 +28,15 @@ function useStoreApi() {
   const [s, setS] = useState<State | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const ref = useRef<State | null>(null);
-  ref.current = s;
+  useEffect(() => {
+    ref.current = s;
+  }, [s]);
 
   useEffect(() => {
     try {
       const raw = localStorage.getItem(KEY);
+      // 브라우저 저장소는 화면이 뜬 뒤에만 읽을 수 있어서 effect에서 불러온다
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setS(raw ? JSON.parse(raw) : initial());
     } catch {
       setS(initial());

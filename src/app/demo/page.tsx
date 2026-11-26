@@ -17,7 +17,9 @@ export default function DemoPage() {
   const [running, setRunning] = useState(false);
   const cap = useRef(0);
   const priceRef = useRef(START);
-  priceRef.current = price;
+  useEffect(() => {
+    priceRef.current = price;
+  }, [price]);
 
   const start = useCallback(() => {
     cap.current = 14000 + Math.floor(Math.random() * 8) * 1000;

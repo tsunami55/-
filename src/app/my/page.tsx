@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { formatRemain, RULES, shippingFor, won } from "@/lib/auction";
 import { useStore } from "@/lib/store";
 import { SIZES, type Address } from "@/lib/types";
@@ -8,14 +8,10 @@ import { SIZES, type Address } from "@/lib/types";
 export default function MyPage() {
   const store = useStore();
   const { me, state, now, ready } = store;
-  const [addr, setAddr] = useState<Address>({ name: "", phone: "", address: "" });
+  const [draft, setDraft] = useState<Address | null>(null);
+  const addr: Address = draft ?? me?.address ?? { name: me?.name ?? "", phone: me?.phone ?? "", address: "" };
   const [save, setSave] = useState(true);
   const [paying, setPaying] = useState(false);
-
-  useEffect(() => {
-    if (me?.address) setAddr(me.address);
-    else if (me) setAddr((a) => ({ ...a, name: a.name || me.name, phone: a.phone || me.phone || "" }));
-  }, [me]);
 
   const mine = useMemo(() => (me ? state.orders.filter((o) => o.userId === me.id) : []), [me, state.orders]);
   const unpaid = mine.filter((o) => o.status === "UNPAID");
@@ -103,7 +99,7 @@ export default function MyPage() {
                   <input
                     key={k}
                     value={addr[k]}
-                    onChange={(e) => setAddr({ ...addr, [k]: e.target.value })}
+                    onChange={(e) => setDraft({ ...addr, [k]: e.target.value })}
                     placeholder={k === "name" ? "받는 분" : k === "phone" ? "연락처" : "주소"}
                     className="w-full rounded-xl border border-line px-4 py-2.5 text-sm"
                   />

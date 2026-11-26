@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { formatRemain, participationRate, uniqueBidders, won } from "@/lib/auction";
 import { useStore } from "@/lib/store";
 import { CATEGORY_LABEL, GRADE_LABEL, SIZES, type Category, type Grade } from "@/lib/types";
@@ -20,10 +20,7 @@ export default function AdminPage() {
   const sales = paidToday.reduce((a, o) => a + o.amount, 0);
   const unpaid = state.orders.filter((o) => o.status === "UNPAID");
   const endingSoon = active.filter((p) => p.endsAt - now < 30 * 60 * 1000).length;
-  const ranked = useMemo(
-    () => [...active].sort((a, b) => (rateDesc ? 1 : -1) * (participationRate(b) - participationRate(a))),
-    [active, rateDesc],
-  );
+  const ranked = [...active].sort((a, b) => (rateDesc ? 1 : -1) * (participationRate(b) - participationRate(a)));
   const user = (id: string) => state.users.find((u) => u.id === id);
   const prod = (id: string) => state.products.find((p) => p.id === id);
 
