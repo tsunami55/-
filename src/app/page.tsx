@@ -76,6 +76,7 @@ export default function Home() {
         </div>
       </section>
 
+      {state.error && <p className="rounded-xl bg-accent-soft p-4 text-sm text-accent">{state.error}</p>}
       {!ready ? (
         <p className="py-20 text-center text-muted">불러오는 중…</p>
       ) : list.length === 0 ? (

@@ -22,7 +22,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           <Header />
           <main className="mx-auto max-w-5xl px-4 pb-24">{children}</main>
           <footer className="border-t border-line py-8 text-center text-xs text-muted">
-            키즈옥션 · 통신판매중개업 신고 예정 · 프로토타입 (데이터는 이 브라우저에만 저장돼요)
+            키즈옥션 · 통신판매중개업 신고 예정 · 테스트 운영 중
           </footer>
         </StoreProvider>
       </body>

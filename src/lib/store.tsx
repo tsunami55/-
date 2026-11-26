@@ -5,6 +5,7 @@ import { supabase } from "./supabase";
 import type { Address, Bid, Notice, Order, Product, User } from "./types";
 
 interface State {
+  error?: string;
   users: User[];
   currentUserId?: string;
   products: Product[];
@@ -97,7 +98,7 @@ function useStoreApi() {
     if (!supabase) return setS(EMPTY);
     const { data: auth } = await supabase.auth.getSession();
     const uid = auth.session?.user.id;
-    const { data: prows } = await supabase.from("products").select("*").order("ends_at").limit(300);
+    const { data: prows, error } = await supabase.from("products").select("*").order("ends_at").limit(300);
     const ids = (prows ?? []).map((p) => p.id);
     const { data: brows } = ids.length
       ? await supabase.from("bids").select("*").in("product_id", ids).order("created_at")
@@ -112,6 +113,7 @@ function useStoreApi() {
         ])
       : [{ data: [] }, { data: [] }, { data: [] }];
     setS({
+      error: error ? `데이터를 불러오지 못했어요: ${error.message}` : undefined,
       currentUserId: uid,
       users: (users.data ?? []).map(toUser),
       products: (prows ?? []).map((p) => toProduct(p, byProduct.get(p.id) ?? [])),
