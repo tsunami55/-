@@ -22,7 +22,6 @@ export default function AdminPage() {
   const endingSoon = active.filter((p) => p.endsAt - now < 30 * 60 * 1000).length;
   const ranked = [...active].sort((a, b) => (rateDesc ? 1 : -1) * (participationRate(b) - participationRate(a)));
   const user = (id: string) => state.users.find((u) => u.id === id);
-  const prod = (id: string) => state.products.find((p) => p.id === id);
 
   if (!ready) return <p className="py-20 text-center text-muted">불러오는 중…</p>;
   if (!me?.isAdmin) return <p className="py-20 text-center text-muted">관리자만 볼 수 있어요. <Link href="/login" className="underline">로그인</Link></p>;
@@ -85,7 +84,7 @@ export default function AdminPage() {
               const u = user(o.userId);
               return (
                 <li key={o.id} className="tabular flex flex-wrap items-center justify-between gap-2 py-2">
-                  <span>{prod(o.productId)?.title} · {u?.name} {u && u.strikes > 0 && <span className="text-accent">(경고 {u.strikes}회)</span>}</span>
+                  <span>{o.productTitle} · {u?.name} {u && u.strikes > 0 && <span className="text-accent">(경고 {u.strikes}회)</span>}</span>
                   <span className="flex items-center gap-3">
                     {won(o.amount)} · 기한 {formatRemain(o.dueAt - now)}
                     <button onClick={() => store.expireOrder(o.id)} className="rounded-lg border border-accent px-2 py-1 text-xs text-accent">

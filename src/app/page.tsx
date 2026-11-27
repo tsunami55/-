@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { formatRemain, nextCloseTime } from "@/lib/auction";
+import { bidCountOf, formatRemain, nextCloseTime } from "@/lib/auction";
 import { useStore } from "@/lib/store";
 import { SIZES, type Grade } from "@/lib/types";
 import ProductCard from "@/components/ProductCard";
@@ -19,7 +19,7 @@ export default function Home() {
       .filter((p) => sizes.length === 0 || sizes.includes(p.size))
       .filter((p) => grade === "ALL" || (grade === "NEW" ? !isB(p.grade) : isB(p.grade)))
       .sort((a, b) =>
-        sort === "ending" ? a.endsAt - b.endsAt : sort === "popular" ? b.bids.length - a.bids.length : a.currentPrice - b.currentPrice,
+        sort === "ending" ? a.endsAt - b.endsAt : sort === "popular" ? bidCountOf(b) - bidCountOf(a) : a.currentPrice - b.currentPrice,
       );
   }, [state.products, sizes, grade, sort]);
 

@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { use, useEffect, useRef, useState } from "react";
-import { buyNowAvailable, formatRemain, increment, minNextBid, reserveMet, RULES, uniqueBidders, won } from "@/lib/auction";
+import { bidCountOf, buyNowAvailable, formatRemain, increment, minNextBid, reserveMet, RULES, uniqueBidders, won } from "@/lib/auction";
 import { fetchMyLeaderMax, useStore } from "@/lib/store";
 import { CATEGORY_LABEL, GRADE_LABEL } from "@/lib/types";
 import ProductArt from "@/components/ProductArt";
@@ -9,7 +9,7 @@ import ProductArt from "@/components/ProductArt";
 export default function AuctionPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const store = useStore();
-  const { state, now, me, ready } = store;
+  const { state, now, me, ready, loadBids } = store;
   const p = state.products.find((x) => x.id === id);
   const [mode, setMode] = useState<"bid" | "max">("bid");
   const [amount, setAmount] = useState("");
@@ -18,6 +18,10 @@ export default function AuctionPage({ params }: { params: Promise<{ id: string }
   const leading = !!me && !!p && p.leaderId === me.id;
   const [myMax, setMyMax] = useState<number | null>(null);
   const price = p?.currentPrice;
+
+  useEffect(() => {
+    if (ready) loadBids(id);
+  }, [ready, id, loadBids]);
 
   useEffect(() => {
     if (leading) fetchMyLeaderMax(id).then(setMyMax);
@@ -80,7 +84,7 @@ export default function AuctionPage({ params }: { params: Promise<{ id: string }
             </div>
             <div className="tabular mt-3 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted">
               <span>시작가 {won(p.startPrice)}</span>
-              <span>입찰 {p.bids.length}회 · {uniqueBidders(p)}명</span>
+              <span>입찰 {bidCountOf(p)}회 · {uniqueBidders(p)}명</span>
               <span>입찰 단위 {won(increment(p.currentPrice))}</span>
               {p.hasReserve && <span className={reserveMet(p) ? "text-emerald-600" : ""}>{reserveMet(p) ? "최저낙찰가 도달" : "최저낙찰가 미달"}</span>}
             </div>
@@ -169,7 +173,7 @@ export default function AuctionPage({ params }: { params: Promise<{ id: string }
 
         <div>
           <h2 className="mb-2 text-sm font-bold">입찰 기록</h2>
-          {p.bids.length === 0 ? (
+          {bidCountOf(p) === 0 ? (
             <p className="text-sm text-muted">아직 입찰이 없어요. 첫 입찰자가 되어 보세요!</p>
           ) : (
             <ul className="divide-y divide-line text-sm">

@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { formatRemain, uniqueBidders, won } from "@/lib/auction";
+import { bidCountOf, formatRemain, uniqueBidders, won } from "@/lib/auction";
 import { GRADE_LABEL, type Product } from "@/lib/types";
 import ProductArt from "./ProductArt";
 
@@ -29,7 +29,7 @@ export default function ProductCard({ p, now }: { p: Product; now: number }) {
         <p className="truncate text-sm">{p.title}</p>
         <p className="tabular text-base font-bold">{won(closed ? (p.finalPrice ?? p.currentPrice) : p.currentPrice)}</p>
         <p className="tabular text-xs text-muted">
-          입찰 {p.bids.length}회 · {uniqueBidders(p)}명
+          입찰 {bidCountOf(p)}회 · {uniqueBidders(p)}명
           {!closed && <span className={remain < 600000 ? " text-accent" : ""}> · {formatRemain(remain)}</span>}
         </p>
       </div>

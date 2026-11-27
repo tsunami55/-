@@ -19,8 +19,7 @@ export default function MyPage() {
   const paid = mine.filter((o) => o.status === "PAID");
   const subtotal = unpaid.reduce((a, o) => a + o.amount, 0);
   const fee = shippingFor(subtotal);
-  const prod = (id: string) => state.products.find((p) => p.id === id)!;
-  const myBidding = me ? state.products.filter((p) => p.status === "ACTIVE" && p.bids.some((b) => b.userId === me.id)) : [];
+  const myBidding = me ? state.products.filter((p) => p.status === "ACTIVE" && state.myBidProductIds.includes(p.id)) : [];
   const notices = me ? state.notices.filter((n) => n.userId === me.id).slice(0, 8) : [];
 
   if (!ready) return <p className="py-20 text-center text-muted">불러오는 중…</p>;
@@ -58,7 +57,7 @@ export default function MyPage() {
       {offers.map((o) => (
         <section key={o.id} className="rounded-2xl border-2 border-accent p-4 text-sm">
           <p className="font-bold">차순위 낙찰 제안</p>
-          <p className="mt-1">「{prod(o.productId).title}」을(를) 입찰하신 {won(o.amount)}에 구매하시겠어요?</p>
+          <p className="mt-1">「{o.productTitle}」을(를) 입찰하신 {won(o.amount)}에 구매하시겠어요?</p>
           <div className="mt-3 flex gap-2">
             <button onClick={() => store.respondOffer(o.id, true)} className="rounded-lg bg-ink px-4 py-2 text-white">구매할게요</button>
             <button onClick={() => store.respondOffer(o.id, false)} className="rounded-lg border border-line px-4 py-2">괜찮아요</button>
@@ -75,7 +74,7 @@ export default function MyPage() {
             <ul className="divide-y divide-line text-sm">
               {unpaid.map((o) => (
                 <li key={o.id} className="tabular flex justify-between py-2">
-                  <span>{prod(o.productId).title} <span className="text-muted">({prod(o.productId).size})</span></span>
+                  <span>{o.productTitle} <span className="text-muted">({o.productSize})</span></span>
                   <span>{won(o.amount)} <span className="text-xs text-accent">· 기한 {formatRemain(o.dueAt - now)}</span></span>
                 </li>
               ))}
@@ -157,7 +156,7 @@ export default function MyPage() {
           <ul className="divide-y divide-line text-sm">
             {paid.map((o) => (
               <li key={o.id} className="tabular flex justify-between py-2">
-                <span>{prod(o.productId).title}</span><span>{won(o.amount)} · 결제완료</span>
+                <span>{o.productTitle}</span><span>{won(o.amount)} · 결제완료</span>
               </li>
             ))}
           </ul>

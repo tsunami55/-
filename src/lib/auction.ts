@@ -25,8 +25,12 @@ export function nextCloseTime(now = Date.now()) {
   return d.getTime();
 }
 
+export function bidCountOf(p: Product) {
+  return p.bidCount ?? p.bids.length;
+}
+
 export function minNextBid(p: Product) {
-  return p.bids.length === 0 ? p.startPrice : p.currentPrice + increment(p.currentPrice);
+  return bidCountOf(p) === 0 ? p.startPrice : p.currentPrice + increment(p.currentPrice);
 }
 
 export function buyNowAvailable(p: Product) {
@@ -43,7 +47,7 @@ export function reserveMet(p: Product) {
 }
 
 export function uniqueBidders(p: Product) {
-  return new Set(p.bids.map((b) => b.userId)).size;
+  return p.bidderCount ?? new Set(p.bids.map((b) => b.userId)).size;
 }
 
 /** 참가율 = 입찰자 수 ÷ 조회수 */

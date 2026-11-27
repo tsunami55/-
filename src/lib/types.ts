@@ -30,7 +30,9 @@ export interface Product {
   currentPrice: number;
   leaderId?: string;
   leaderMax?: number; // 현재 1등의 최대 입찰가 (비공개)
-  bids: Bid[];
+  bids: Bid[]; // 상세 화면에서만 불러옴 (최근 30건)
+  bidCount?: number;
+  bidderCount?: number;
   views: number;
   endsAt: number;
   status: ProductStatus;
@@ -71,6 +73,8 @@ export interface Order {
   status: OrderStatus;
   paidAt?: number;
   shippingFee?: number;
+  productTitle?: string;
+  productSize?: number;
 }
 
 export interface Notice {
