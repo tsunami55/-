@@ -16,6 +16,7 @@ export default function AdminPage() {
   const startOfDay = new Date(now).setHours(0, 0, 0, 0);
   const active = state.products.filter((p) => p.status === "ACTIVE");
   const pending = state.products.filter((p) => p.status === "PENDING");
+  const unsold = state.products.filter((p) => p.status === "UNSOLD");
   const paidToday = state.orders.filter((o) => o.status === "PAID" && (o.paidAt ?? 0) >= startOfDay);
   const sales = paidToday.reduce((a, o) => a + o.amount, 0);
   const unpaid = state.orders.filter((o) => o.status === "UNPAID");
@@ -97,6 +98,26 @@ export default function AdminPage() {
           </ul>
         )}
         <p className="mt-2 text-xs text-muted">만료 처리 시: 1회 경고, 2회째 30일 입찰 제한, 차순위 입찰자에게 자동으로 낙찰 제안</p>
+      </section>
+
+      <section>
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="font-bold">유찰 상품 <span className="text-xs font-normal text-muted">최근 7일</span></h2>
+          {unsold.length > 0 && (
+            <button onClick={() => store.relist()} className="rounded-full bg-ink px-3 py-1 text-sm text-white">전체 재경매</button>
+          )}
+        </div>
+        {unsold.length === 0 ? <p className="text-sm text-muted">없어요.</p> : (
+          <ul className="divide-y divide-line text-sm">
+            {unsold.map((p) => (
+              <li key={p.id} className="tabular flex items-center justify-between gap-2 py-2">
+                <span>{p.title} · {p.size} · 시작가 {won(p.startPrice)}</span>
+                <button onClick={() => store.relist(p.id)} className="rounded-lg border border-line px-3 py-1 text-xs">재경매</button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <p className="mt-2 text-xs text-muted">재경매하면 입찰 기록이 지워지고 시작가로 오늘(또는 내일) 밤 9시 30분 마감에 다시 올라가요. 시작가를 낮추고 싶으면 새로 등록해 주세요.</p>
       </section>
 
       <section>

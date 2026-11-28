@@ -309,6 +309,11 @@ function useStoreApi() {
     },
     review: (productId: string, approve: boolean) => rpc("review_product", { p_product: productId, p_approve: approve }, productId),
     expireOrder: (orderId: string) => rpc("expire_order", { p_order: orderId }),
+    async relist(productId?: string) {
+      const r = await rpc("relist_unsold", { p_product: productId ?? null });
+      loadProducts();
+      return r;
+    },
     async closeNow(productId?: string) {
       const r = await rpc("admin_close_now", { p_product: productId ?? null }, productId);
       loadProducts();
